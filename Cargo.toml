@@ -1,0 +1,7 @@
+[package]
+
+name = "rg"
+version = "0.0.1"
+
+[dependencies]
+walkdir = "1"
