@@ -1,6 +1,8 @@
 extern crate walkdir;
+extern crate regex;
 
 use walkdir::WalkDir;
+use regex::Regex;
 
 use std::env;
 use std::fs::File;
@@ -11,7 +13,7 @@ use std::sync::mpsc::{Sender,Receiver};
 use std::sync::mpsc;
 use std::thread;
 
-fn search_in_file(text_to_find: String, entry: walkdir::DirEntry, tx: Sender<String>) {
+fn search_in_file(re: Regex, entry: walkdir::DirEntry, tx: Sender<String>) {
     let mut data = String::new();
 
     let f = File::open(entry.path())
@@ -23,7 +25,7 @@ fn search_in_file(text_to_find: String, entry: walkdir::DirEntry, tx: Sender<Str
 
     while br.read_line(&mut line_text).unwrap_or(0) > 0 {
         line_no += 1;
-        if line_text.contains(&text_to_find) {
+        if re.is_match(&line_text) {
             if 0 == data.len() {
                 data.push('\n');
                 data.push_str(entry.path().to_str().unwrap());
@@ -40,17 +42,17 @@ fn search_in_file(text_to_find: String, entry: walkdir::DirEntry, tx: Sender<Str
     let _ = tx.send(data);
 }
 
-fn search_entry(text_to_find: &String, entry: &walkdir::DirEntry) -> Receiver<String> {
+fn search_entry(re: &Regex, entry: &walkdir::DirEntry) -> Receiver<String> {
     let (tx, rx) = mpsc::channel();
 
     if !entry.path().is_file() {
         let _ = tx.send(String::new());
     } else {
-        let text = text_to_find.clone();
+        let re = re.clone();
         let e = entry.clone();
         let sender = tx.clone();
         thread::spawn(move || {
-            search_in_file(text, e, sender);
+            search_in_file(re, e, sender);
         });
     }
 
@@ -60,14 +62,14 @@ fn search_entry(text_to_find: &String, entry: &walkdir::DirEntry) -> Receiver<St
 
 fn main() {
     let mut args = env::args_os();
-    let text_to_find = args.nth(1).unwrap().into_string()
-        .expect("nothing to search for");
+    let text_to_find = args.nth(1).unwrap();
+    let re = Regex::new(text_to_find.to_str().unwrap()).unwrap();
 
     let mut results = Vec::new();
 
     for entry in WalkDir::new(".").follow_links(true) {
         let entry = entry.unwrap();
-        let rx = search_entry(&text_to_find, &entry);
+        let rx = search_entry(&re, &entry);
         results.push(rx);
     }
 
